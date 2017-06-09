@@ -72,7 +72,7 @@ use self::Aliasability::*;
 use middle::region::RegionMaps;
 use hir::def_id::DefId;
 use hir::map as hir_map;
-use infer::{InferCtxt, InferTables};
+use infer::InferCtxt;
 use hir::def::{Def, CtorKind};
 use ty::adjustment;
 use ty::{self, Ty, TyCtxt};
@@ -416,7 +416,7 @@ impl<'a, 'gcx, 'tcx> MemCategorizationContext<'a, 'gcx, 'tcx> {
         self.infcx.map(|infcx| infcx.type_moves_by_default(param_env, ty, span))
             .or_else(|| {
                 self.tcx.lift_to_global(&(param_env, ty)).map(|(param_env, ty)| {
-                    ty.moves_by_default(tcx, param_env, span)
+                    ty.moves_by_default(self.tcx.global_tcx(), param_env, span)
                 })
             })
             .unwrap_or(true)
@@ -434,14 +434,12 @@ impl<'a, 'gcx, 'tcx> MemCategorizationContext<'a, 'gcx, 'tcx> {
     }
 
     fn closure_kind(&self, def_id: DefId, span: Span) -> ty::ClosureKind {
-        if let Some(infcx) = self.infcx {
-            if let InferTables::InProgress(_) = infcx.tables {
-                if let Some(id) = self.tcx.hir.as_local_node_id(def_id) {
-                    return self.tables.closure_kinds.get(&id).cloned()
-                        .map(|(kind, _)| kind).unwrap_or_else(|| {
-                            span_bug!(span, "No closure kind for {:?}", def_id);
-                        });
-                }
+        if self.infcx.and_then(|infcx| infcx.in_progress_tables).is_some() {
+            if let Some(id) = self.tcx.hir.as_local_node_id(def_id) {
+                return self.tables.closure_kinds.get(&id).cloned()
+                    .map(|(kind, _)| kind).unwrap_or_else(|| {
+                        span_bug!(span, "No closure kind for {:?}", def_id);
+                    });
             }
         }
 
